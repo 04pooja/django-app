@@ -4,6 +4,13 @@ from .models import Product,Contact,Orders,OrderUpdate
 from math import ceil
 import logging
 import json
+from PayTm import Checksum
+
+
+
+
+from django.views.decorators.csrf import csrf_exempt
+MERCHANT_KEY='kbzk1DSbJiV_O3p5';
 
 logger=logging.getLogger(__name__)
 
@@ -36,10 +43,10 @@ def contact(request):
         email=request.POST.get('email','')
         desc=request.POST.get('desc','')
         print(name,phone,email,desc)
-        thank = True;
         contact=Contact(name=name,phone=phone,email=email,desc=desc)
         contact.save()
-    return render(request,'blog/contact.html',{'thank':thank})
+        thank = True;
+    return render(request,'blog/contact.html',)
 
 def tracker(request):
     if request.method == "POST":
@@ -68,22 +75,46 @@ def productview(request,myid):
 
 def checkout(request):
     if request.method=="POST":
+        items_json=request.POST.get('itemsjson','')
         name=request.POST.get('name','')
         email=request.POST.get('email','')
-        items_json=request.POST.get('itemsjson','')
+        amount=request.POST.get('amount','')
         phone=request.POST.get('phone','')
         address=request.POST.get('address1','') + " " + request.POST.get('address2','')
         state=request.POST.get('state','')
         city=request.POST.get('city','')
         zip_code=request.POST.get('zip','')
-        order = Orders(name=name,phone=phone,email=email,address=address,state=state,city=city,zip_code=zip_code,
-                       items_json=items_json)
+        order = Orders(items_json=items_json,name=name,email=email,amount=amount,phone=phone,address=address,
+            state=state,city=city,zip_code=zip_code)
+                       
         order.save()
         update = OrderUpdate(order_id=order.order_id, update_desc="order has been placed ")
         update.save()
         thank = True;
         id=order.order_id
-        return render(request,'blog/checkout.html',{'thank':thank,'id':id})
+        #return render(request,'blog/checkout.html',{'id':id})
+        param_dict={ 
+        'MID':'WorldP64425807474247',
+        'ORDER_ID':order.order_id,
+        'TXN_AMOUNT':'1',
+        'CUST_ID':email,
+        'INDUSTRY_TYPE_ID':'Retail',
+        'WEBSITE':'WEBSTAGING',
+        'CHANNEL_ID':'WEB',
+        'CALLBACK_URL':'http://127.0.0.1:8000/blog/handlerequest/',
+        }
+        param_dict['CHECKSUMHASH']=checksum.generate_checksum(param_dict,MERCHANT_KEY)
+        return render(request,'blog/paytm.html',{'param_dict': param_dict})
     return render(request, 'blog/checkout.html')
+
+
+@csrf_exempt
+def handlerequest(request):
+    return HttpResponse('done')
+    pass
+
+    #paytm will send you post request here
+
+
 
 # Create your views here.
