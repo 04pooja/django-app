@@ -1,16 +1,18 @@
-from django.shortcuts import render
+from django.shortcuts import render, HttpResponse, redirect, \
+    get_object_or_404, reverse
 from django.http import HttpResponse
 from .models import Product,Contact,Orders,OrderUpdate
 from math import ceil
 import logging
+from decimal import Decimal
 import json
-from PayTm import Checksum
-
-
+from paypal.standard.forms import PayPalPaymentsForm
+from django.views.decorators.csrf import csrf_exempt
+from django.urls import reverse
 
 
 from django.views.decorators.csrf import csrf_exempt
-MERCHANT_KEY='kbzk1DSbJiV_O3p5';
+
 
 logger=logging.getLogger(__name__)
 
@@ -73,6 +75,34 @@ def productview(request,myid):
     product=Product.objects.filter(id=myid)
     return render(request,'blog/prodview.html',{'product':product[0]})
 
+def searchmatch(query,item):
+    ''' return true only if query matches the item'''
+    if query in item.desc or query in item.product_name or query in item.category:
+        return True
+    else:
+        return False
+
+
+def search(request):
+    query = request.GET.get('search')
+    allprods=[]
+    catprods=Product.objects.values('category','id')
+    cats={item['category'] for item in catprods}
+    for cat in cats:
+        prodtemp=Product.objects.filter(category=cat)
+        prod = [item for item in prodtemp if searchmatch(query,item)]
+        n=len(prod)
+        nslides=n//4+ceil((n/4)-(n/4))
+        if len(prod)!=0:
+            allprods.append([prod,range(1,nslides),nslides])
+        
+    params={'allprods':allprods,"msg":""} 
+    if len(allprods)==0 or len(query)<3:
+        params={'msg':"please make sure entire query should be relevant"}
+
+    return render(request,'blog/search.html',params)
+
+
 def checkout(request):
     if request.method=="POST":
         items_json=request.POST.get('itemsjson','')
@@ -92,29 +122,40 @@ def checkout(request):
         update.save()
         thank = True;
         id=order.order_id
-        #return render(request,'blog/checkout.html',{'id':id})
-        param_dict={ 
-        'MID':'WorldP64425807474247',
-        'ORDER_ID':order.order_id,
-        'TXN_AMOUNT':'1',
-        'CUST_ID':email,
-        'INDUSTRY_TYPE_ID':'Retail',
-        'WEBSITE':'WEBSTAGING',
-        'CHANNEL_ID':'WEB',
-        'CALLBACK_URL':'http://127.0.0.1:8000/blog/handlerequest/',
-        }
-        param_dict['CHECKSUMHASH']=checksum.generate_checksum(param_dict,MERCHANT_KEY)
-        return render(request,'blog/paytm.html',{'param_dict': param_dict})
+        request.session['id'] = order.order_id
+        return redirect('process_payment')
+   #return render(request,'blog/checkout.html',{'id':id})
     return render(request, 'blog/checkout.html')
 
 
+def process_payment(request):
+    id = request.session.get('id')
+    order = get_object_or_404(Orders, order_id=id)
+    host = request.get_host()
+ 
+    paypal_dict = {
+        'business': 'poojamaurya0401@gmail.com',
+        'amount': '%.2f' % Decimal(order.total_cost()).quantize(
+            Decimal('.01')),
+        'item_name': 'Order {}'.format(order.order_id),
+        'invoice': str(order.order_id),
+        'currency_code': 'USD',
+        'notify_url': 'http://{}{}'.format(host,
+                                           reverse('paypal-ipn')),
+        'return_url': 'http://{}{}'.format(host,
+                                           reverse('payment_done')),
+        'cancel_return': 'http://{}{}'.format(host,
+                                              reverse('payment_cancelled')),
+    }
+ 
+    form = PayPalPaymentsForm(initial=paypal_dict)
+    return render(request, 'blog/process_payment.html', {'order': order, 'form': form})   
+
 @csrf_exempt
-def handlerequest(request):
-    return HttpResponse('done')
-    pass
-
-    #paytm will send you post request here
-
-
-
-# Create your views here.
+def payment_done(request):
+    return render(request, 'blog/payment_done.html')
+ 
+ 
+@csrf_exempt
+def payment_cancelled(request):
+    return render(request, 'blog/payment_cancelled.html')
