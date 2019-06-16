@@ -48,7 +48,7 @@ def contact(request):
         contact=Contact(name=name,phone=phone,email=email,desc=desc)
         contact.save()
         thank = True;
-    return render(request,'blog/contact.html',)
+    return render(request,'blog/contact.html')
 
 def tracker(request):
     if request.method == "POST":
@@ -62,13 +62,13 @@ def tracker(request):
                 updates = []
                 for item in update:
                     updates.append({'text':item.update_desc,'time':item.timestamp})
-                    response = json.dumps([updates,order[0].items_json],default=str)
+                    response = json.dumps({"status":"success","updates":updates,"itemsJson":order[0].items_json},default=str)
                 return HttpResponse(response)
             else:
-                return HttpResponse('{}')
+                return HttpResponse('{"status":"noitem"}')
             
         except Exception as e:
-            return HttpResponse('{}')         
+            return HttpResponse('{"status":"erorr"}')         
     return render(request,'blog/tracker.html')
 
 def productview(request,myid):
@@ -124,8 +124,8 @@ def checkout(request):
         id=order.order_id
         request.session['id'] = order.order_id
         return redirect('process_payment')
-   #return render(request,'blog/checkout.html',{'id':id})
-    return render(request, 'blog/checkout.html')
+
+    return render(request,'blog/checkout.html')
 
 
 def process_payment(request):
